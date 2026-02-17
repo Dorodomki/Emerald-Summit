@@ -1032,6 +1032,7 @@
 	created_item = /obj/item/rogueweapon/sword/long/ranesh_stratan
 	i_type = "Weapons"
 
+/datum/anvil_recipe/weapons/holy/gloryglaive
 	name = "Gloryous Glaive (+1 H. Steel, +1 Small log)"
 	req_bar = /obj/item/ingot/steelholy
 	additional_items = list(/obj/item/ingot/steelholy, /obj/item/grown/log/tree/small)
@@ -1039,6 +1040,7 @@
 	created_item = /obj/item/rogueweapon/halberd/glaive/ravox
 	i_type = "Weapons"
 
+/datum/anvil_recipe/weapons/holy/dendorwarstaff
 	name = "Dendorite Warstaff (+1 Small log)"
 	req_bar = /obj/item/ingot/steelholy
 	additional_items = list(/obj/item/grown/log/tree/small)

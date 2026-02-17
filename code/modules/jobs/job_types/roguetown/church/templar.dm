@@ -423,7 +423,7 @@
 			H.put_in_hands(new /obj/item/rogueweapon/halberd/glaive/ravox(H), TRUE)
 			H.adjust_skillrank(/datum/skill/combat/polearms, 1, TRUE)
 		if("Dendorite Warstaff")
-			H.put_in_hands(new /datum/anvil_recipe/weapons/holy/dendorwarstaff(H), TRUE)
+			H.put_in_hands(new /obj/item/rogueweapon/woodstaff/quarterstaff/steel/dendor(H), TRUE)
 			H.adjust_skillrank(/datum/skill/combat/polearms, 1, TRUE)
 	// -- Start of section for god specific bonuses --
 	if(H.patron?.type == /datum/patron/divine/astrata)
