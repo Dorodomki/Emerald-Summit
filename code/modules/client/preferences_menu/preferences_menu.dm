@@ -284,6 +284,21 @@ GLOBAL_LIST_EMPTY(open_preference_menus)
 		return "OOC notes too short ([length(prefs.ooc_notes)]/[MINIMUM_OOC_NOTES] characters)."
 	if(prefs.joblessrole == RETURNTOLOBBY && !has_any_class_selected())
 		return "Pick at least one class in Class Selection (or set 'If Role Unavailable' to Random)."
+	var/mob/dead/new_player/np = prefs.parent?.mob
+	if(istype(np))
+		var/list/stale = list()
+		for(var/job_title in prefs.job_preferences)
+			if(!prefs.job_preferences[job_title])
+				continue
+			if(!SSjob.GetJob(job_title))
+				stale += job_title
+				continue
+			if(np.IsJobUnavailable(job_title) == JOB_UNAVAILABLE_PQ)
+				return "Saved preference for '[job_title]' requires Player Quality you no longer meet. Please update your class selections."
+		for(var/job_title in stale)
+			prefs.job_preferences.Remove(job_title)
+		if(length(stale))
+			prefs.save_preferences()
 	return null
 
 /// Drop the cached static payload and push a full_update to every open ui on
@@ -325,6 +340,10 @@ GLOBAL_LIST_EMPTY(open_preference_menus)
 		if("identity")
 			data["identity"] = build_identity_dynamic(user)
 			data["culinary"] = build_culinary_dynamic(user)
+			// Appearance controls (ancestry → sprite scale) were relocated to the Identity
+			// tab's Palate column, so the body dynamic payload must ship here too. body_static
+			// (option lists) is always sent via build_full_static_data.
+			data["body"] = build_body_dynamic(user)
 		if("features")
 			data["body"] = build_body_dynamic(user)
 			data["markings"] = build_markings_dynamic(user)
@@ -1020,8 +1039,10 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 	var/list/data = list()
 	data["windowflashing"] = prefs.windowflashing
 	data["hear_midis"] = !!(prefs.toggles & SOUND_MIDI)
+	data["hear_instruments"] = !!(prefs.toggles & SOUND_INSTRUMENTS)
 	data["lobby_music"] = !!(prefs.toggles & SOUND_LOBBY)
 	data["pull_requests"] = !!(prefs.chat_toggles & CHAT_PULLR)
+	data["hear_ooc"] = !!(prefs.chat_toggles & CHAT_OOC)
 	data["unlock_content"] = prefs.unlock_content
 	data["byond_publicity"] = !!(prefs.toggles & MEMBER_PUBLIC)
 	data["is_admin"] = !!user.client?.holder
@@ -1312,12 +1333,14 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 		return entry
 
 	var/job_unavailable = JOB_AVAILABLE
+	var/player_pq
 	if(isnewplayer(prefs.parent?.mob))
 		var/mob/dead/new_player/new_player = prefs.parent.mob
 		job_unavailable = new_player.IsJobUnavailable(job.title, latejoin = FALSE)
+		player_pq = get_playerquality(new_player.ckey)
 	if(!(job_unavailable in list(JOB_AVAILABLE, JOB_UNAVAILABLE_SLOTFULL)))
 		entry["state"] = "unavailable"
-		entry["state_text"] = unavailable_reason_text(job_unavailable)
+		entry["state_text"] = unavailable_reason_text(job_unavailable, job, player_pq)
 		return entry
 
 	entry["state"] = "available"
@@ -1429,8 +1452,14 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 	return gate
 
 /// Resolve a JOB_UNAVAILABLE_* code into a short human-readable reason.
-/datum/preferences_menu/proc/unavailable_reason_text(reason)
+/datum/preferences_menu/proc/unavailable_reason_text(reason, datum/job/job, pq)
 	switch(reason)
+		if(JOB_UNAVAILABLE_PQ)
+			if(!isnull(job?.min_pq) && !isnull(pq) && pq < job.min_pq)
+				return "Requires PQ [job.min_pq]"
+			if(!isnull(job?.max_pq) && !isnull(pq) && pq > job.max_pq)
+				return "PQ must be [job.max_pq] or below"
+			return "PQ requirement"
 		if(JOB_UNAVAILABLE_GENERIC)
 			return "Not available this round"
 		if(JOB_UNAVAILABLE_BANNED)
@@ -1742,6 +1771,24 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			on_identity_change()
 			return TRUE
 
+		if("preview_voice_pack")
+			if(prefs.voice_pack == "Default")
+				return TRUE
+			var/vptype = GLOB.voice_packs_list[prefs.voice_pack]
+			if(!vptype)
+				return TRUE
+			// Cache the instance so repeated samples don't re-instantiate; rebuild on pack change.
+			if(!istype(prefs.temp_vp, vptype))
+				prefs.temp_vp = new vptype()
+			if(!LAZYLEN(prefs.temp_vp.preview))
+				return TRUE
+			var/sample = prefs.temp_vp.get_sound(pick(prefs.temp_vp.preview))
+			if(islist(sample))
+				sample = pick(sample)
+			if(sample)
+				user.playsound_local(user, sample, 100)
+			return TRUE
+
 		if("set_age")
 			if(!prefs.pref_species)
 				return TRUE
@@ -1836,7 +1883,7 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			return TRUE
 
 		if("set_virtue")
-			var/list/virtues_available = build_virtue_picker_list(user, FALSE)
+			var/list/virtues_available = build_virtue_picker_list(user, FALSE, prefs.virtuetwo)
 			if(!length(virtues_available))
 				to_chat(user, span_warning("No virtues available."))
 				return TRUE
@@ -1854,7 +1901,7 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			var/picked = params["name"]
 			if(!picked)
 				return TRUE
-			var/list/virtues_available = build_virtue_picker_list(user, FALSE)
+			var/list/virtues_available = build_virtue_picker_list(user, FALSE, prefs.virtuetwo)
 			var/datum/virtue/v = virtues_available[picked]
 			if(!v)
 				return TRUE
@@ -1867,7 +1914,7 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 		if("set_virtuetwo")
 			if(prefs.statpack?.name != "Virtuous")
 				return TRUE
-			var/list/virtues_available = build_virtue_picker_list(user, FALSE)
+			var/list/virtues_available = build_virtue_picker_list(user, FALSE, prefs.virtue)
 			if(!length(virtues_available))
 				to_chat(user, span_warning("No virtues available."))
 				return TRUE
@@ -1886,7 +1933,7 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			var/picked = params["name"]
 			if(!picked)
 				return TRUE
-			var/list/virtues_available = build_virtue_picker_list(user, FALSE)
+			var/list/virtues_available = build_virtue_picker_list(user, FALSE, prefs.virtue)
 			var/datum/virtue/v = virtues_available[picked]
 			if(!v)
 				return TRUE
@@ -2252,10 +2299,8 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			return TRUE
 
 		if("set_voice_color")
-			// Use the TGUI-native color picker (ColorPickerModal) instead of
-			// BYOND's OS-native color dialog — keeps the picker in-game and
-			// gives the user HSV/RGB inputs + presets.
-			var/picked = tgui_color_picker(user, "Choose your character's voice color:", "Voice Color", prefs.voice_color)
+			// Classic BYOND color dialog — the TGUI ColorPickerModal was broken here.
+			var/picked = input(user, "Choose your character's voice color:", "Voice Color", prefs.voice_color) as color|null
 			if(picked)
 				if(color_hex2num(picked) < 230)
 					to_chat(user, "<font color='red'>This voice color is too dark for mortals.</font>")
@@ -2265,7 +2310,8 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			return TRUE
 
 		if("set_highlight_color")
-			var/picked = tgui_color_picker(user, "Choose your character's nickname highlight color:", "Nickname Highlight Color", prefs.highlight_color)
+			// Classic BYOND color dialog — the TGUI ColorPickerModal was broken here.
+			var/picked = input(user, "Choose your character's nickname highlight color:", "Nickname Highlight Color", prefs.highlight_color) as color|null
 			if(picked)
 				prefs.highlight_color = sanitize_hexcolor(picked)
 				on_identity_change()
@@ -2659,6 +2705,11 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 			on_identity_change()
 			return TRUE
 
+		if("toggle_hear_instruments")
+			prefs.toggles ^= SOUND_INSTRUMENTS
+			on_identity_change()
+			return TRUE
+
 		if("toggle_lobby_music")
 			prefs.toggles ^= SOUND_LOBBY
 			if((prefs.toggles & SOUND_LOBBY) && user.client && isnewplayer(user))
@@ -2670,6 +2721,11 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 
 		if("toggle_pull_requests")
 			prefs.chat_toggles ^= CHAT_PULLR
+			on_identity_change()
+			return TRUE
+
+		if("toggle_hear_ooc")
+			prefs.chat_toggles ^= CHAT_OOC
 			on_identity_change()
 			return TRUE
 
@@ -4250,7 +4306,7 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 
 /// Build the virtue picker list, filtering the same way the classic prefs.dm:2320 picker does
 /// (skip origin/pack/racial/heretic virtues — they're handled by separate prefs).
-/datum/preferences_menu/proc/build_virtue_picker_list(mob/user, show_message = FALSE)
+/datum/preferences_menu/proc/build_virtue_picker_list(mob/user, show_message = FALSE, datum/virtue/exclude_virtue = null)
 	var/list/out = list()
 	if(!prefs)
 		return out
@@ -4267,6 +4323,10 @@ GLOBAL_VAR_INIT(cached_lobby_snapshot_at, 0)
 		if(v.restricted && species_type && (species_type in v.races))
 			continue
 		if(istype(v, /datum/virtue/racial) && species_type && !(species_type in v.races))
+			continue
+		// Don't offer the virtue already chosen in the other slot (Virtuous statpack's two virtues
+		// must differ). "None" is always allowed so either slot can still be cleared.
+		if(exclude_virtue && v.name == exclude_virtue.name && v.name != "None")
 			continue
 		out[v.name] = v
 	return sort_list(out)

@@ -176,6 +176,15 @@ GLOBAL_LIST_INIT(roleplay_readme, world.file2list("strings/rt/rp_prompt.txt"))
 				if(length(client.prefs.ooc_notes) < MINIMUM_OOC_NOTES)
 					to_chat(src, span_boldwarning("You need at least a few words in your OOC notes in order to play."))
 					return
+				for(var/job_title in client.prefs.job_preferences)
+					if(!client.prefs.job_preferences[job_title])
+						continue
+					if(!SSjob.GetJob(job_title))
+						to_chat(src, span_boldwarning("Your saved preference for '[job_title]' is not available on this server. Please update your job preferences before readying."))
+						return
+					if(IsJobUnavailable(job_title) == JOB_UNAVAILABLE_PQ)
+						to_chat(src, span_boldwarning("Your saved preference for '[job_title]' requires Player Quality you no longer meet. Please update your job preferences before readying."))
+						return
 
 			if(ready != tready)
 				ready = tready
@@ -383,6 +392,14 @@ GLOBAL_LIST_INIT(roleplay_readme, world.file2list("strings/rt/rp_prompt.txt"))
 				return "You must wait [remaining_time] seconds before playing as an [jobtitle] again."
 		if(JOB_UNAVAILABLE_VIRTUESVICE)
 			return "[jobtitle] is restricted by your Virtues or Vices."
+		if(JOB_UNAVAILABLE_PQ)
+			var/datum/job/J = SSjob.GetJob(jobtitle)
+			var/pq = usr ? get_playerquality(usr.ckey) : null
+			if(J && !isnull(J.min_pq) && !isnull(pq) && pq < J.min_pq)
+				return "[jobtitle] requires a PQ of [J.min_pq] (yours is [pq])."
+			if(J && !isnull(J.max_pq) && !isnull(pq) && pq > J.max_pq)
+				return "[jobtitle] is only for a PQ of [J.max_pq] or below (yours is [pq])."
+			return "[jobtitle] is restricted by your PQ."
 	return "Error: Unknown job availability."
 
 //used for latejoining
@@ -427,9 +444,9 @@ GLOBAL_LIST_INIT(roleplay_readme, world.file2list("strings/rt/rp_prompt.txt"))
 		return JOB_UNAVAILABLE_GENERIC
 	if(!job.required || latejoin)
 		if(!isnull(job.min_pq) && (get_playerquality(ckey) < job.min_pq))
-			return JOB_UNAVAILABLE_GENERIC
+			return JOB_UNAVAILABLE_PQ
 		if(!isnull(job.max_pq) && (get_playerquality(ckey) > job.max_pq))
-			return JOB_UNAVAILABLE_GENERIC
+			return JOB_UNAVAILABLE_PQ
 	var/datum/species/pref_species = client.prefs.pref_species
 	if(length(job.allowed_races) && !(pref_species.type in job.allowed_races))
 		return JOB_UNAVAILABLE_RACE

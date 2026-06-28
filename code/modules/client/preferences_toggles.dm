@@ -38,6 +38,14 @@
 		prefs.save_preferences()
 		toggle_fullscreeny(prefs.toggles & TOGGLE_FULLSCREEN)
 
+/client/verb/toggle_ooc()
+	set category = "Options"
+	set name = "Toggle OOC Chat"
+	if(prefs)
+		prefs.chat_toggles ^= CHAT_OOC
+		prefs.save_preferences()
+		to_chat(src, "You will [(prefs.chat_toggles & CHAT_OOC) ? "now" : "no longer"] see messages on the OOC channel.")
+
 /client/verb/toggle_screenshake()
 	set category = "Options"
 	set name = "Toggle Screen Shake"
@@ -97,6 +105,24 @@
 			to_chat(src, "Others can play with you.")
 		else
 			to_chat(src, "Others can't touch you.")
+
+/client/verb/toggle_extreme_ERP()// toggles gore, ryona, and other extreme content in the ERP panel. This is separate from the regular ERP toggle for users who want to avoid just the extreme content but are okay with milder stuff.
+	set category = "Options"
+	set name = "Toggle Extreme ERP Content"
+
+	if(!usr.client.check_agevet())
+		to_chat(src, "You are not age vetted. Join the Discord server to become age vetted.")
+		return
+
+	if(prefs)
+		prefs.extreme_erp = !prefs.extreme_erp
+		prefs.save_preferences()
+		if(prefs.extreme_erp)
+			to_chat(src, "Extreme ERP content enabled in the ERP panel.")
+		else
+			if(hascall(src, "modular_handle_extreme_erp_toggle_disable"))
+				call(src, "modular_handle_extreme_erp_toggle_disable")()
+			to_chat(src, "Extreme ERP content disabled in the ERP panel.")
 
 /client/verb/toggle_compliance_notifs() // The messages need to be on-by-default while this is in its early stages.
 	set category = "Options"

@@ -1,6 +1,6 @@
 import { Box, Button, LabeledList, Section, Stack } from 'tgui-core/components';
 
-import { useBackend } from '../../backend';
+import type { ActFunctionType } from '../../backend';
 
 type RoleEntry = {
   name: string;
@@ -24,10 +24,11 @@ type Data = {
   game_prefs: GamePrefsData;
 };
 
+type GamePrefsTabProps = { data: Data; act: ActFunctionType };
+
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export const GamePrefsTab = (props) => {
-  const { act, data } = useBackend<Data>();
+export const GamePrefsTab = ({ data, act }: GamePrefsTabProps) => {
   const gp = data.game_prefs;
   if (!gp) {
     return <Box color="label">Loading…</Box>;
@@ -57,12 +58,18 @@ export const GamePrefsTab = (props) => {
               <Button onClick={() => act('set_clientfps')}>{gp.clientfps}</Button>
             </LabeledList.Item>
             <LabeledList.Item label="Ambient Occlusion">
-              <Button onClick={() => act('toggle_ambientocclusion')}>
+              <Button
+                color={gp.ambientocclusion ? 'good' : 'default'}
+                onClick={() => act('toggle_ambientocclusion')}
+              >
                 {gp.ambientocclusion ? 'Enabled' : 'Disabled'}
               </Button>
             </LabeledList.Item>
             <LabeledList.Item label="Be a Voice">
-              <Button onClick={() => act('toggle_schizo_voice')}>
+              <Button
+                color={gp.schizo_voice ? 'good' : 'default'}
+                onClick={() => act('toggle_schizo_voice')}
+              >
                 {gp.schizo_voice ? 'Enabled' : 'Disabled'}
               </Button>
             </LabeledList.Item>
